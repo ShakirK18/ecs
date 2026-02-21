@@ -1,39 +1,46 @@
-name: Development
-
+name: Deploy Image to ECR
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
-  id-token: write
   contents: read
+  id-token: write
+# the above permissions are needed for the GitHub token to authenticate with AWS using OIDC and get temporary credentials for deployment
 
-jobs:
-  build-and-push:
+jobs: 
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
         with:
-          role-to-assume: "arn:aws:iam::687848809549:role/oidc-dev"
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: eu-west-1
+          role-session-name: OIDC-Session
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+#       - name: Login to Amazon ECR
+#         id: login-ecr
+#         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build, tag, and push image
-        working-directory: ./app
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-        run: |
-          docker build -t shakir-hello-world .
-          docker tag shakir-hello-world:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+#       - name: Build, tag, and push the image to Amazon ECR
+#         id: build-image
+#         env:
+#           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+#           ECR_REPOSITORY: ${{ secrets.REPO_NAME }}
+#           IMAGE_TAG: ${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }}
+#         run: |
+#           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+#           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+# # the above workflow will build a Docker image from the root of the repository, tag it with the ECR registry and repository name, and push it to ECR. 
+# # The image tag is generated using the commit hash and a timestamp to ensure uniqueness.
+
+#       - name: Deploy with Terraform
+#         run: |
+#           terraform init
+#           terraform apply -auto-approve
