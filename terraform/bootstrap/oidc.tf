@@ -29,7 +29,7 @@ data "aws_iam_policy_document" "oidc" {
   }
 }
 
-resource "aws_iam_role" "this" {
+resource "aws_iam_role" "oidc" {
   name               = var.oidc-role
   assume_role_policy = data.aws_iam_policy_document.oidc.json
 }

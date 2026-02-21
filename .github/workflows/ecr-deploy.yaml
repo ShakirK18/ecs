@@ -1,8 +1,8 @@
 name: Deploy Image to ECR
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
+  # push:
+  #   branches: [main]
 
 permissions:
   contents: read
@@ -19,7 +19,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-to-assume: "arn:aws:iam::687848809549:role/oidc-dev"
           aws-region: eu-west-1
           role-session-name: OIDC-Session
 
