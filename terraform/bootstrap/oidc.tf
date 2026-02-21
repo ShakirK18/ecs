@@ -1,3 +1,23 @@
+# module "github-oidc-provider" {
+#   source  = "terraform-module/github-oidc-provider/aws"
+#   version = "2.2.1"
+
+#   create_oidc_provider = true
+#   create_oidc_role     = true
+
+#   role_name = var.oidc-role
+
+#   repositories              = var.repositories
+#   oidc_role_attach_policies = [data.aws_iam_policy.adminaccess.arn]
+
+#   tags = {
+#     ManagedBy = "Terraform"
+#   }
+# }
+
+# The above module is a convenient way to set up GitHub OIDC provider and role, but here we will implement it manually to have more control 
+# and understanding of the resources being created.
+
 resource "aws_iam_openid_connect_provider" "this" {
   url = "https://token.actions.githubusercontent.com"
 
