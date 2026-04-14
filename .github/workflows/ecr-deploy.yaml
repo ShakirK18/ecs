@@ -1,79 +1,66 @@
 name: Build and Push Base Image
 
-# The workflow should only be triggered manually when there is a change to base image
-
 on:
   workflow_dispatch:
     inputs: 
       aws_region:
-      required: true
-      type: string
+        description: 'AWS Region to deploy to'
+        required: true
+        default: 'us-east-1'
+        type: string
 
 env:
-  AWS_REGION: ${{ inputs.aws_region }}
+  AWS_REGION: ${{ github.event.inputs.aws_region }}
   
 jobs:
-  # validate-inputs:
-  #   name: Validate inputs
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Verify role ARN
-  #       run: |
-  #         printf "%s" "${{ vars.ROLE_ARN_IMAGE_PUSH }}" | grep -q .
-
   build-and-push-base:
     name: Build and push base image
-    needs: [validate-inputs]
+    # needs: [validate-inputs] # Removed because the job is commented out
     runs-on: ubuntu-latest
     steps:
       - name: Check out
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - id: image-build
         name: Build container image
         env:
-          LOCAL_IMAGE_REPOSITORY: ${{ github.event.repository.name }} # name it the same as the GitHub repo
-          COMMON_IMAGE_TAG: ${{ github.sha }}
+          LOCAL_IMAGE_REPOSITORY: ${{ github.event.repository.name }}
         run: |
-          ( cd "$(git rev-parse --show-toplevel)/" && \
-            docker build \
-              -f app/Dockerfile \
-              --label git-repository='${{ github.repositoryUrl }}' \
-              --label github-repository-url='${{ github.server_url }}/${{ github.repository }}' \
-              --label git-commit='${{ github.sha }}' \
-              --label github-run-id='${{ github.run_id }}' \
-              --label github-runner-name='${{ runner.name }}' \
-              --tag $LOCAL_IMAGE_REPOSITORY:baseimage \
-              --tag $LOCAL_IMAGE_REPOSITORY:${{ github.sha }} \
-              . \
-          )
-          printf "## Image build\n" >> $GITHUB_STEP_SUMMARY
-          printf "\n- Build succeeded\n" >> $GITHUB_STEP_SUMMARY
+          docker build \
+            -f app/Dockerfile \
+            --label git-commit='${{ github.sha }}' \
+            --tag $LOCAL_IMAGE_REPOSITORY:baseimage \
+            .
+          echo "## Image build" >> $GITHUB_STEP_SUMMARY
+          echo "- Build succeeded" >> $GITHUB_STEP_SUMMARY
+
       - id: credentials-image-push
-        name: Configure AWS Credentials (image push)
-        uses: aws-actions/configure-aws-credentials@v6
+        name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-      - name: Report AWS principal ARN
-        run: aws sts get-caller-identity --query Arn --output text
-        shell: bash
+
       - id: login-ecr-push
         name: Log in to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
+
       - id: image-tag-push
         name: Tag, and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr-push.outputs.registry }}
-          ECR_REPOSITORY: ${{ github.event.repository.name }} # name it the same as the GitHub repo
-          LOCAL_IMAGE_REPOSITORY: ${{ github.event.repository.name }} # name it the same as the GitHub repo
-          COMMON_IMAGE_TAG: ${{ github.sha }}
+          ECR_REPOSITORY: ${{ github.event.repository.name }}
+          LOCAL_IMAGE_REPOSITORY: ${{ github.event.repository.name }}
         run: |
           IMAGE_URL="$ECR_REGISTRY/$ECR_REPOSITORY:baseimage"
           docker tag $LOCAL_IMAGE_REPOSITORY:baseimage $IMAGE_URL
           docker push $IMAGE_URL
           
-          printf "\n- Pushed to ECR as **$ECR_REPOSITORY:base-image**\n" >> $GITHUB_STEP_SUMMARY
+          # This sets the value for the job output
+          echo "image_url=$IMAGE_URL" >> $GITHUB_OUTPUT
+          echo "- Pushed to ECR: **$IMAGE_URL**" >> $GITHUB_STEP_SUMMARY
+
+    # Reference the step ID 'image-tag-push' and the output name 'image_url'
     outputs:
-      image_url: '${{ steps.calculate-image-url-with-tag.outputs.image_url }}'
+      image_url: ${{ steps.image-tag-push.outputs.image_url }}
