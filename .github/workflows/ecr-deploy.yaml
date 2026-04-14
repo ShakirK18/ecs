@@ -1,44 +1,79 @@
-name: Deploy Image to ECR
+name: Build and Push Base Image
+
+# The workflow should only be triggered manually when there is a change to base image
+
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [main]
+    inputs: 
+        aws_region:
+        required: true
+        type: string
 
-permissions:
-  contents: read
-  id-token: write
-# the above permissions are needed for the GitHub token to authenticate with AWS using OIDC and get temporary credentials for deployment
-
-jobs: 
-  deploy:
+env:
+  AWS_REGION: ${{ inputs.aws_region }}
+  
+jobs:
+  validate-inputs:
+    name: Validate inputs
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+      - name: Verify role ARN
+        run: |
+          printf "%s" "${{ vars.ROLE_ARN_IMAGE_PUSH }}" | grep -q .
 
-      - name: Configure AWS credentials
+  build-and-push-base:
+    name: Build and push base image
+    needs: [validate-inputs]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+
+      - id: image-build
+        name: Build container image
+        env:
+          LOCAL_IMAGE_REPOSITORY: ${{ github.event.repository.name }} # name it the same as the GitHub repo
+          COMMON_IMAGE_TAG: ${{ github.sha }}
+        run: |
+          ( cd "$(git rev-parse --show-toplevel)/" && \
+            docker build \
+              -f app/Dockerfile \
+              --label git-repository='${{ github.repositoryUrl }}' \
+              --label github-repository-url='${{ github.server_url }}/${{ github.repository }}' \
+              --label git-commit='${{ github.sha }}' \
+              --label github-run-id='${{ github.run_id }}' \
+              --label github-runner-name='${{ runner.name }}' \
+              --tag $LOCAL_IMAGE_REPOSITORY:baseimage \
+              --tag $LOCAL_IMAGE_REPOSITORY:${{ github.sha }} \
+              . \
+          )
+          printf "## Image build\n" >> $GITHUB_STEP_SUMMARY
+          printf "\n- Build succeeded\n" >> $GITHUB_STEP_SUMMARY
+      - id: credentials-image-push
+        name: Configure AWS Credentials (image push)
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: "arn:aws:iam::687848809549:role/oidc-dev"
-          aws-region: eu-west-1
-          role-session-name: OIDC-Session
-
-      - name: Verify IAM Role Assumption
-        run: aws sts get-caller-identity
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-
-      - name: Build, tag, and push the image to Amazon ECR
-        id: build-image
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Report AWS principal ARN
+        run: aws sts get-caller-identity --query Arn --output text
+        shell: bash
+      - id: login-ecr-push
+        name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+      - id: image-tag-push
+        name: Tag, and push image to Amazon ECR
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ secrets.REPO_NAME }}
-          IMAGE_TAG: ${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }}
+          ECR_REGISTRY: ${{ steps.login-ecr-push.outputs.registry }}
+          ECR_REPOSITORY: ${{ github.event.repository.name }} # name it the same as the GitHub repo
+          LOCAL_IMAGE_REPOSITORY: ${{ github.event.repository.name }} # name it the same as the GitHub repo
+          COMMON_IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-
-# # the above workflow will build a Docker image from the root of the repository, tag it with the ECR registry and repository name, and push it to ECR. 
-# # The image tag is generated using the commit hash and a timestamp to ensure uniqueness.
+          IMAGE_URL="$ECR_REGISTRY/$ECR_REPOSITORY:baseimage"
+          docker tag $LOCAL_IMAGE_REPOSITORY:baseimage $IMAGE_URL
+          docker push $IMAGE_URL
+          
+          printf "\n- Pushed to ECR as **$ECR_REPOSITORY:base-image**\n" >> $GITHUB_STEP_SUMMARY
+    outputs:
+      image_url: '${{ steps.calculate-image-url-with-tag.outputs.image_url }}'
