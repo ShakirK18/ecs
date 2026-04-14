@@ -17,3 +17,8 @@ variable "environment" {
   description = "Environment name"
   type        = string
 }
+
+variable "lb_log_bucket" {
+  description = "Name of the S3 bucket for ALB logs"
+  type = string
+}

@@ -1,0 +1,47 @@
+name: Bootstrap AWS Infrastructure
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+    
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: "arn:aws:iam::687848809549:role/oidc-dev"
+          # the above should be stored as a secret in the repository and referenced here to avoid hardcoding sensitive information in the workflow file
+          aws-region: eu-west-1
+          role-session-name: OIDC-Session   
+    
+      - name: Verify IAM Role Assumption
+        run: aws sts get-caller-identity 
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: terraform/bootstrap
+
+      - name: Terraform Format Check
+        run: terraform fmt -check 
+        continue-on-error: true
+
+      - name: Terraform Validate
+        run: terraform validate -no-color
+
+      - name: Lint Terraform tflint
+        uses: terraform-linters/tflint-action@v0.3.0
+        with:
+          version: 0.34.1
+          config_file: .tflint.hcl   
+
+

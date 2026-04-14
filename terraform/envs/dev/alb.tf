@@ -2,7 +2,6 @@ data "aws_s3_bucket" "lb_logs" {
   bucket = var.lb_logs_bucket
 }
 
-
 resource "aws_lb" "test" {
   name               = var.alb_name
   internal           = true
