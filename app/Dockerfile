@@ -1,11 +1,7 @@
-FROM python:3.12-slim
+FROM alpine:latest
 
-WORKDIR /app
+# Optional: Install a simple package like curl
+RUN apk add --no-network --no-cache curl
 
-RUN pip install flask
-
-COPY app.py .
-
-EXPOSE 5000
-
-CMD ["python", "app.py"]
+# Add a simple command that runs when the container starts
+CMD ["echo", "Hello from ECR!"]
